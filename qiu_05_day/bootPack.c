@@ -7,17 +7,19 @@ void io_cli(void);				  // 执行 CLI 指令，清除 EFLAGS 的 IF 位，禁止可屏蔽中断
 void io_out8(int port, int data); // 执行 OUT 指令，向指定 I/O 端口写入 1 字节数据
 int io_load_eflags(void);		  // 执行 PUSHF+POP EAX，读取当前 EFLAGS 寄存器值并返回
 void io_store_eflags(int eflags); // 执行 PUSH EAX+POPF，将给定值写入 EFLAGS 寄存器
+void load_gdtr(int limit, int addr); // 执行 LGDT 指令，加载全局描述符表寄存器 GDTR
+void load_idtr(int limit, int addr); // 执行 LIDT 指令，加载中断描述符表寄存器 IDTR
 
 // ============================================================
 // 本地函数前置声明（在文件末尾定义，此处声明避免编译警告）
 // ============================================================
-void init_palette(void);																		// 初始化前 16 色的调色板
-void set_palette(int start, int end, unsigned char *rgb);										// 向 VGA 硬件写入调色板数据，参数: 起始色号, 结束色号, RGB 数组指针(每色 3 字节)
-void boxfill8(unsigned char *vram, int xsize, unsigned char c, int x0, int y0, int x1, int y1); // 在显存中填充矩形区域
-void init_sceen(char *vram, int xsize, int ysize);												// 绘制桌面：浅蓝背景 + 底部灰色任务栏 + 左右两个按钮（对应原作者 init_screen）
-void putfont8(char *vram, int xsize, int x, int y, char c, char *font);							// 在指定坐标绘制一个 8×16 的等宽字符
-void putfonts8_asc(char *vram, int xsize, int x, int y, char c, unsigned char *s);				// 在指定坐标绘制一个以 0x00 结尾的字符串（每字符 8×16 点阵）
-void init_mouse_cursor8(char *mouse, char bc);														// 准备鼠标指针图案（16×16 点阵），参数: 鼠标图案数组, 背景色
+void init_palette(void);																				  // 初始化前 16 色的调色板
+void set_palette(int start, int end, unsigned char *rgb);												  // 向 VGA 硬件写入调色板数据，参数: 起始色号, 结束色号, RGB 数组指针(每色 3 字节)
+void boxfill8(unsigned char *vram, int xsize, unsigned char c, int x0, int y0, int x1, int y1);			  // 在显存中填充矩形区域
+void init_sceen(char *vram, int xsize, int ysize);														  // 绘制桌面：浅蓝背景 + 底部灰色任务栏 + 左右两个按钮（对应原作者 init_screen）
+void putfont8(char *vram, int xsize, int x, int y, char c, char *font);									  // 在指定坐标绘制一个 8×16 的等宽字符
+void putfonts8_asc(char *vram, int xsize, int x, int y, char c, unsigned char *s);						  // 在指定坐标绘制一个以 0x00 结尾的字符串（每字符 8×16 点阵）
+void init_mouse_cursor8(char *mouse, char bc);															  // 准备鼠标指针图案（16×16 点阵），参数: 鼠标图案数组, 背景色
 void putblock8_8(char *vram, int xsize, int pxsize, int pysize, int px0, int py0, char *buf, int bxsize); // 在显存的指定位置绘制一个图块（鼠标指针）
 
 // ============================================================
@@ -73,7 +75,7 @@ void HariMain(void)
 
 	init_palette();																// ① 设定调色板（16 种颜色）
 	init_sceen(binfo->vram, binfo->scrnx, binfo->scrny);						// ② 绘制桌面背景 + 任务栏 + 按钮
-	putfonts8_asc(binfo->vram,binfo->scrnx,8,8,COL8_FFFFFF,"hello world");		// ③ 在屏幕左上角显示字符串
+	putfonts8_asc(binfo->vram, binfo->scrnx, 8, 8, COL8_FFFFFF, "hello world"); // ③ 在屏幕左上角显示字符串
 
 	// 显示变量
 	char s[40];
@@ -81,10 +83,10 @@ void HariMain(void)
 	putfonts8_asc(binfo->vram, binfo->scrnx, 16, 64, COL8_FFFFFF, s);
 
 	// 显示鼠标指针（16×16 图案，坐标 (80,80) 约在屏幕中央）
-	char mcursor[256];															// 鼠标图案缓冲区（= 16×16 像素）
-	int mx = 80, my = 80;														// 鼠标初始坐标
-	init_mouse_cursor8(mcursor, COL8_008484);									// ④ 准备鼠标形状（背景色=桌面色→透明效果）
-	putblock8_8(binfo->vram, binfo->scrnx, 16, 16, mx, my, mcursor, 16);		// ⑤ 把鼠标画到显存
+	char mcursor[256];													 // 鼠标图案缓冲区（= 16×16 像素）
+	int mx = 80, my = 80;												 // 鼠标初始坐标
+	init_mouse_cursor8(mcursor, COL8_008484);							 // ④ 准备鼠标形状（背景色=桌面色→透明效果）
+	putblock8_8(binfo->vram, binfo->scrnx, 16, 16, mx, my, mcursor, 16); // ⑤ 把鼠标画到显存
 
 	for (;;)
 	{ // ④ 主循环：空闲即停机，由硬件中断唤醒
@@ -298,10 +300,10 @@ void putfont8(char *vram, int xsize, int x, int y, char c, char *font)
 void putfonts8_asc(char *vram, int xsize, int x, int y, char c, unsigned char *s)
 {
 	extern char hankaku[4096]; // 导入 hankaku.obj 中的完整字库（256 字 × 16 行）
-	for (; *s != 0x00; s++)    // 遍历字符串，直到遇到结束符 0x00
+	for (; *s != 0x00; s++)	   // 遍历字符串，直到遇到结束符 0x00
 	{
 		putfont8(vram, xsize, x, y, c, hankaku + *s * 16); // 取当前字符的点阵数据绘制
-		x += 8; // 一个字符占 8 像素宽，x 坐标右移，为下一个字符留位置
+		x += 8;											   // 一个字符占 8 像素宽，x 坐标右移，为下一个字符留位置
 	}
 	return;
 }
@@ -367,8 +369,190 @@ void putblock8_8(char *vram, int vxsize, int pxsize, int pysize, int px0, int py
 	{
 		for (x = 0; x < pxsize; x++)
 		{
-			vram[(py0 + y) * vxsize + (px0 + x)] = buf[y * bxsize + x];
+			vram[(py0 + y) * vxsize + (px0 + x)] = buf[y * bxsize + x];		// 计算显存地址并写入颜色数据
 		}
 	}
 	return;
 }
+
+// ============================================================
+// GDT / IDT 数据结构 —— 保护模式的分段与中断机制
+//
+// 为什么需要这两张表？
+//   保护模式下不能直接访问物理内存，CPU 强制通过"描述符表"做间接寻址。
+//   这就好比不能直接说出名字，得先查电话簿。
+//
+//   GDT（全局描述符表）：定义内存"段"的位置、大小和权限。
+//     每个段描述符 8 字节，类似一个"权限门禁"——规定从哪到哪能读写/执行。
+//   IDT（中断描述符表）：定义每个中断号对应的处理程序入口。
+//     每个门描述符 8 字节，类似"紧急电话簿"——中断来了该打哪个号码。
+//
+// 内存布局（由 asmhead.nas 中的链接脚本保证）：
+//   0x00270000  ← GDT 起始（最多 8192 个段描述符 × 8 字节 = 64 KB）
+//   0x0026f800  ← IDT 起始（最多 256 个门描述符 × 8 字节 = 2 KB）
+//   两个区域相邻，GDT 在高端，IDT 在低端，互不重叠。
+// ============================================================
+
+// ----------------------------------------------------------
+// 段描述符结构体（8 字节）—— 对应 CPU 硬件定义的格式
+// 内存布局（从低地址到高地址）：
+//  字节0-1: limit_low    — 段界限低 16 位
+//  字节2-3: base_low     — 基地址低 16 位
+//  字节4:   base_mid     — 基地址中 8 位
+//  字节5:   access_right — 访问权（P_DPL_S_TYPE 等标志）
+//  字节6:   limit_high   — 高 4 位段界限 + 低 4 位标志（G/D/B/L/AVL）
+//  字节7:   base_high    — 基地址高 8 位
+// 最终基地址 = base_low | (base_mid << 16) | (base_high << 24)
+// 最终段界限 = limit_low | ((limit_high & 0x0f) << 16)，配合 G 位决定单位
+// ----------------------------------------------------------
+struct SEGMENT_DESCRIPTOR
+{
+	short limit_low, base_low;
+	char base_mid, access_right;
+	char limit_high, base_high;
+};
+
+// ----------------------------------------------------------
+// 门描述符结构体（8 字节）—— 对应 CPU 硬件定义的中断门/陷阱门格式
+// 内存布局（从低地址到高地址）：
+//  字节0-1: offset_low   — 处理程序地址低 16 位
+//  字节2-3: selector     — 目标代码段选择子（告诉 CPU 用哪个段执行中断处理）
+//  字节4:   dw_count     — 调用门专用：参数复制个数（中断门填 0）
+//  字节5:   access_right — 访问权（存在位、DPL、类型等）
+//  字节6-7: offset_high  — 处理程序地址高 16 位
+// 最终处理程序地址 = offset_low | (offset_high << 16)
+// ----------------------------------------------------------
+struct GATE_DESCRIPTOR
+{
+	short offset_low, selector;
+	char dw_count, access_right;
+	short offset_high;
+};
+
+// ============================================================
+// init_gdtidt — 初始化 GDT 和 IDT
+//
+// 职责：
+//   ① 将 GDT 的 8192 个槽位全部清零
+//   ② 设置 3 个有实际意义的段描述符（见下方说明）
+//   ③ 加载 GDTR 寄存器，告诉 CPU GDT 在哪
+//   ④ 将 IDT 的 256 个槽位全部清零（暂时无中断处理程序）
+//   ⑤ 加载 IDTR 寄存器，告诉 CPU IDT 在哪
+//
+// GDT 槽位分配：
+//   [0] 空描述符（CPU 规定第 0 项必须为空，否则异常）
+//   [1] 系统整体段：基址 0x00000000，大小 4GB，可读写（CPU 用这个段访问全体内存）
+//   [2] 内核代码段：基址 0x00280000（bootpack 加载处），大小 512KB，可执行
+//   其余 8189 个槽位预留，暂时全部无效。
+// ============================================================
+void init_gdtidt(void)
+{
+	struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *)0x00270000;	// GDT 起始地址
+	struct GATE_DESCRIPTOR *idt = (struct GATE_DESCRIPTOR *)0x0026f800; 	// IDT 起始地址
+	int i;
+
+	// ---- GDT 初始化 ----
+	for (i = 0; i < 8192; i++)	
+	// 8192 个段描述符槽位,8192个槽位是因为段选择子占 16 位，其中 3 位是 RPL，1 位是 TI，剩下 12 位索引，
+	// 所以最大索引为 2^12=4096，每个索引占 8 字节，所以 GDT 最大为 4096*8=32768 字节，即 32 KB，但为了对齐和预留空间，通常分配 64 KB（8192 个槽位）。
+	{
+		set_segmdesc(gdt + i, 0, 0, 0); // 清零：所有段设为"无效"（注意这里gdt指向的构造体是8字节，所以每次操作都影响8个字节）
+	}
+	// 段 [1]: 系统整体段 — 覆盖全部 4GB 地址空间，可读写
+	//   limit = 0xffffffff, base = 0x00000000, ar = 0x4092（0xffffffff代表4GB的内存）
+	//   0x4092 含义：Present+ring0+数据段+可读写+常规数据段
+	//   这个段的作用是让 CPU 通过它访问全体内存，虽然我们不直接使用它，但必须存在，否则 CPU 无法访问内存。	
+	set_segmdesc(gdt + 1, 0xffffffff, 0x00000000, 0x4092);
+	// 段 [2]: 内核代码段 — 覆盖 bootpack 所在的 512KB 区域，可执行
+	//   limit = 0x0007ffff（= 512KB-1）, base = 0x00280000, ar = 0x409a
+	//   0x409a 含义：Present+ring0+代码段+可执行+已访问位
+	//   这个段的作用是让 CPU 通过它执行 bootpack 的代码，虽然我们不直接使用它，但必须存在，否则 CPU 无法执行代码。
+	set_segmdesc(gdt + 2, 0x0007ffff, 0x00280000, 0x409a);
+	load_gdtr(0xffff, 0x00270000); // GDTR: 表限长 = 64KB(8192×8-1), 表地址 = 0x270000
+
+	// ---- IDT 初始化 ----
+	for (i = 0; i < 256; i++)
+	{
+		set_gatedesc(idt + i, 0, 0, 0); // 清零：所有中断暂未注册处理程序
+	}
+	load_idtr(0x7ff, 0x0026f800); // IDTR: 表限长 = 2KB(256×8-1), 表地址 = 0x26f800
+	return;
+}
+
+// ============================================================
+// set_segmdesc — 填写一个段描述符（8 字节）
+//
+// 参数：
+//   sd    = 指向目标段描述符的指针
+//   limit = 段界限（字节数 - 1，即最大偏移量）
+//   base  = 段基地址（32 位物理地址）
+//   ar    = 访问权 + 标志位（16 位，低 8 位是 access_right，高 8 位是 limit_high 的标志部分）
+//
+// 段界限处理：
+//   如果 limit > 0xfffff（即 1MB），说明需要以 4KB 为单位（G=1），
+//   此时将 limit /= 0x1000，并设置 ar 的 bit15（G 位）。
+//   CPU 收到 G=1 后会自动乘以 4KB 还原，所以实际范围可到 4GB。
+//
+// ar（Access Rights）编码说明（16 位，实际用低 12 位）：
+//   bit15  : G（粒度）：0=字节, 1=4KB
+//   bit14  : D/B（默认操作大小）：0=16位, 1=32位
+//   bit13  : L（64位模式）：IA-32 下为 0
+//   bit12  : AVL（软件可用位）：忽略
+//   bit11-8: 保留
+//   bit7   : P（存在位）：1=有效
+//   bit6-5 : DPL（描述符特权级）：0=ring0(内核), 3=ring3(用户)
+//   bit4   : S（系统/代码数据）：1=代码或数据段, 0=系统段
+//   bit3   : 代码/数据段内：E(可执行)/C(一致)/R(可读)/A(已访问)
+//            or 数据段内：ED(扩展方向)/W(可写)/A(已访问)
+//   bit2-0 : TYPE（段类型）
+//
+// 常用 ar 值：
+//   0x4092 = 0b0100 0000 1001 0010
+//            G=1(4KB粒度) D=1(32位) P=1 DPL=0 S=1(数据段) W=1(可写)
+//   0x409a = 0b0100 0000 1001 1010
+//            G=1 D=1 P=1 DPL=0 S=1(代码段) E=1(可执行) R=1(可读)
+// ============================================================
+void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar)
+{
+	if (limit > 0xfffff)
+	{
+		ar |= 0x8000;   // G_bit = 1：以 4KB 为粒度
+		limit /= 0x1000; // 界限值除以 4KB，CPU 会自动乘回来
+	}
+	sd->limit_low = limit & 0xffff;          // 段界限低 16 位
+	sd->base_low = base & 0xffff;            // 基地址低 16 位
+	sd->base_mid = (base >> 16) & 0xff;      // 基地址中 8 位
+	sd->access_right = ar & 0xff;            // access_right（低字节 = P_DPL_S_TYPE）
+	sd->limit_high = ((limit >> 16) & 0x0f) | ((ar >> 8) & 0xf0); // 高 4 位段界限 + 高 4 位标志(G/D/B/L/AVL)
+	sd->base_high = (base >> 24) & 0xff;     // 基地址高 8 位
+	return;
+}
+
+// ============================================================
+// set_gatedesc — 填写一个门描述符（8 字节）
+//
+// 参数：
+//   gd       = 指向目标门描述符的指针
+//   offset   = 中断处理函数的 32 位地址
+//   selector = 目标代码段选择子（通常是 GDT[2] = 2*8 = 16）
+//   ar       = access_right（低 8 位有效）
+//
+// ar 编码说明（中断门）：
+//   bit7   : P（存在位）：1=有效
+//   bit6-5 : DPL（描述符特权级）：通常 0（内核中断）
+//   bit4-0 : TYPE：0x0e = 中断门（IF 自动清除，防嵌套）
+//                   0x0f = 陷阱门（IF 不清除，用于调试）
+//
+// 关于 dw_count（参数复制计数）：
+//   这是调用门（CALL GATE）才用的字段，表示从调用者栈复制多少个参数。
+//   中断门和陷阱门不使用此字段，填 0 即可。
+// ============================================================
+void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar)
+{
+	gd->offset_low = offset & 0xffff;       // 处理程序地址低 16 位
+	gd->selector = selector;                 // 目标代码段选择子
+	gd->dw_count = (ar >> 8) & 0xff;        // 调用门参数计数（中断门填 0）
+	gd->access_right = ar & 0xff;            // 访问权（P_DPL_TYPE）
+	gd->offset_high = (offset >> 16) & 0xffff; // 处理程序地址高 16 位
+	return;
+}	

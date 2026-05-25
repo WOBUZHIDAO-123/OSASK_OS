@@ -26,6 +26,7 @@
     GLOBAL _io_in8, _io_in16, _io_in32    ; I/O 端口读取（8/16/32 位）
     GLOBAL _io_out8, _io_out16, _io_out32 ; I/O 端口写入（8/16/32 位）
     GLOBAL _io_load_eflags, _io_store_eflags  ; EFLAGS 寄存器操作
+    GLOBAL _load_gdtr, _load_idtr             ; GDT/IDT 表寄存器加载（GDTR/IDTR）
 
 
 [SECTION .text]
@@ -240,3 +241,49 @@ _io_store_eflags:
                             ; POPFD = Pop stack to EFLAGS Double-word
                             ; 完成 EFLAGS 的恢复
     RET                     ; 在执行RET时，EAX的值就是返回值
+
+
+;==========================================================================
+; 函数: load_gdtr(int limit, int addr)
+; 功能: 执行 LGDT 指令，加载全局描述符表寄存器 GDTR
+;       告诉 CPU 全局描述符表 GDT 在哪（地址）以及多大（界限）
+; 参数:
+;   limit —— GDT 界限值 = 总字节数 - 1（第 1 个参数，16 位）
+;   addr  —— GDT 基地址（第 2 个参数，32 位）
+; 返回: 无
+; 栈布局:
+;   [ESP+0] = 返回地址
+;   [ESP+4] = limit
+;   [ESP+8] = addr
+; 实现技巧:
+;   不显式构造 6 字节伪描述符，而是利用栈上已有的参数位置：
+;   ① 将 limit 写入 [ESP+6]
+;   ② [ESP+8] 处已经是 addr（第 2 个参数）
+;   ③ LGDT [ESP+6] 从栈上读取 6 字节 → [ESP+6~11]
+;      ┌────────┬────────┐
+;      │ limit  │  addr  │
+;      │ 2 bytes│ 4 bytes│
+;      └────────┴────────┘
+;      ESP+6   ESP+8    ESP+12
+;==========================================================================
+_load_gdtr:
+        MOV		AX,[ESP+4]		; AX = limit（第 1 个参数）
+        MOV		[ESP+6],AX		; 将 limit 写入伪描述符低 2 字节位置
+        LGDT	[ESP+6]			; 从栈加载 6 字节伪描述符到 GDTR
+        RET						; 返回（无需清理栈，未使用 PUSH）
+
+
+;==========================================================================
+; 函数: load_idtr(int limit, int addr)
+; 功能: 执行 LIDT 指令，加载中断描述符表寄存器 IDTR
+;       告诉 CPU 中断描述符表 IDT 在哪（地址）以及多大（界限）
+; 参数与 load_gdtr 完全一致：
+;   limit —— IDT 界限值 = 总字节数 - 1（第 1 个参数）
+;   addr  —— IDT 基地址（第 2 个参数）
+; 返回: 无
+;==========================================================================
+_load_idtr:
+        MOV		AX,[ESP+4]		; AX = limit
+        MOV		[ESP+6],AX		; 写入伪描述符低 2 字节
+        LIDT	[ESP+6]			; 从栈加载 6 字节伪描述符到 IDTR
+        RET

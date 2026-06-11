@@ -3,6 +3,9 @@
 # 定义工具链路径、编译规则和便捷命令
 # ============================================================
 
+OBJS_BOOTPACK = bootpack.obj naskfunc.obj hankaku.obj graphic.obj dsctbl.obj
+
+
 # ---------- 工具链路径 ----------
 TOOLPATH = ../z_tools/
 INCPATH  = ../z_tools/haribote/
@@ -97,10 +100,11 @@ hankaku.obj : hankaku.bin Makefile
 # 【修改】链接规则（第5天加入 hankaku.obj）
 # 之前只有 bootpack.obj + naskfunc.obj，缺少 hankaku.obj
 # 导致链接报错 "can't link _hankaku"
+# 【第6天追加】加入 graphic.obj（图形绘制函数）和 dsctbl.obj（GDT/IDT 表初始化）
 # ═══════════════════════════════════════════════════════════════
-bootpack.bim : bootpack.obj naskfunc.obj hankaku.obj Makefile
+bootpack.bim : bootpack.obj naskfunc.obj hankaku.obj graphic.obj dsctbl.obj Makefile
 	$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map \
-		bootpack.obj naskfunc.obj hankaku.obj
+		bootpack.obj naskfunc.obj hankaku.obj graphic.obj dsctbl.obj
 
 # BIM → HRB 格式（haribote 专用，加载基址偏移 0）
 bootpack.hrb : bootpack.bim Makefile

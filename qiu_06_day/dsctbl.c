@@ -1,44 +1,6 @@
 /* GDT 和 IDT 等描述符表相关函数 */
 
-// ----------------------------------------------------------
-// 段描述符结构体（8 字节）—— 对应 CPU 硬件定义的格式
-// 内存布局（从低地址到高地址）：
-//  字节0-1: limit_low    — 段界限低 16 位
-//  字节2-3: base_low     — 基地址低 16 位
-//  字节4:   base_mid     — 基地址中 8 位
-//  字节5:   access_right — 访问权（P_DPL_S_TYPE 等标志）
-//  字节6:   limit_high   — 高 4 位段界限 + 低 4 位标志（G/D/B/L/AVL）
-//  字节7:   base_high    — 基地址高 8 位
-// 最终基地址 = base_low | (base_mid << 16) | (base_high << 24)
-// 最终段界限 = limit_low | ((limit_high & 0x0f) << 16)，配合 G 位决定单位
-// ----------------------------------------------------------
-struct SEGMENT_DESCRIPTOR {
-	short limit_low, base_low;
-	char base_mid, access_right;
-	char limit_high, base_high;
-};
-
-// ----------------------------------------------------------
-// 门描述符结构体（8 字节）—— 对应 CPU 硬件定义的中断门/陷阱门格式
-// 内存布局（从低地址到高地址）：
-//  字节0-1: offset_low   — 处理程序地址低 16 位
-//  字节2-3: selector     — 目标代码段选择子（告诉 CPU 用哪个段执行中断处理）
-//  字节4:   dw_count     — 调用门专用：参数复制个数（中断门填 0）
-//  字节5:   access_right — 访问权（存在位、DPL、类型等）
-//  字节6-7: offset_high  — 处理程序地址高 16 位
-// 最终处理程序地址 = offset_low | (offset_high << 16)
-// ----------------------------------------------------------
-struct GATE_DESCRIPTOR {
-	short offset_low, selector;
-	char dw_count, access_right;
-	short offset_high;
-};
-
-void init_gdtidt(void);
-void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar);
-void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
-void load_gdtr(int limit, int addr);
-void load_idtr(int limit, int addr);
+#include "bootpack.h"	// 包含全局定义、结构体和函数声明
 
 // ============================================================
 // init_gdtidt — 初始化 GDT 和 IDT

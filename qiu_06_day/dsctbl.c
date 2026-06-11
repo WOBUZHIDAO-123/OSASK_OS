@@ -1,6 +1,6 @@
 /* GDT 和 IDT 等描述符表相关函数 */
 
-#include "bootpack.h"	// 包含全局定义、结构体和函数声明
+#include "bootpack.h"	// 包含全局定义和函数声明
 
 // ============================================================
 // init_gdtidt — 初始化 GDT 和 IDT
@@ -47,11 +47,14 @@ void init_gdtidt(void)
 	//   0x4092 含义：Present+ring0+数据段+可读写+常规数据段
 	//   这个段的作用是让 CPU 通过它访问全体内存，虽然我们不直接使用它，但必须存在，否则 CPU 无法访问内存。
 	set_segmdesc(gdt + 1, 0xffffffff, 0x00000000, 0x4092);
+
 	// 段 [2]: 内核代码段 — 覆盖 bootpack 所在的 512KB 区域，可执行
 	//   limit = 0x0007ffff（= 512KB-1）, base = 0x00280000, ar = 0x409a
 	//   0x409a 含义：Present+ring0+代码段+可执行+已访问位
 	//   这个段的作用是让 CPU 通过它执行 bootpack 的代码，虽然我们不直接使用它，但必须存在，否则 CPU 无法执行代码。
 	set_segmdesc(gdt + 2, 0x0007ffff, 0x00280000, 0x409a);
+
+	// 加载 GDTR 寄存器，告诉 CPU GDT 在哪
 	load_gdtr(0xffff, 0x00270000); // GDTR: 表限长 = 64KB(8192×8-1), 表地址 = 0x270000
 
 	// IDT 初始化
@@ -74,7 +77,7 @@ void init_gdtidt(void)
 //
 // 段界限处理：
 //   如果 limit > 0xfffff（即 1MB），说明需要以 4KB 为单位（G=1），
-//   此时将 limit /= 0x1000，并设置 ar 的 bit15（G 位）。
+//   此时将 limit /= 0x1000（0x1000就是 4KB），并设置 ar 的 bit15（G 位）。
 //
 // ar（Access Rights）编码说明（16 位）：
 //   bit15  : G（粒度）：0=字节, 1=4KB
@@ -95,12 +98,13 @@ void init_gdtidt(void)
 void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar)
 {
 	if (limit > 0xfffff) {
-		ar |= 0x8000; /* G_bit = 1 */
-		limit /= 0x1000;
+		ar |= 0x8000;	//0x8000 = 1000 0000 0000 0000，ar按位或处理后结果为1，ar=1就是设置了G位，表示段界限以4KB为单位
+		//这里不直接让ar=1是因为ar还包含其他标志位，直接等于1会直接覆盖掉其他权限，所以用按位或操作来设置G位。
+		limit /= 0x1000;	// 0x1000 = 4096，limit除以4096相当于右移12位，得到以4KB为单位的段界限值
 	}
-	sd->limit_low    = limit & 0xffff;          // 段界限低 16 位
+	sd->limit_low    = limit & 0xffff;          // 段界限低 16 位，0xffff 是 16 个 1 的二进制数，limit & 0xffff 就是取 limit 的低 16 位
 	sd->base_low     = base & 0xffff;            // 基地址低 16 位
-	sd->base_mid     = (base >> 16) & 0xff;      // 基地址中 8 位
+	sd->base_mid     = (base >> 16) & 0xff;      // 基地址中 8 位，0xff 是 8 个 1 的二进制数，(base >> 16) & 0xff 就是先右移 16 位得到基地址的高 16 位，再取其中的低 8 位
 	sd->access_right = ar & 0xff;                // access_right（P_DPL_S_TYPE）
 	sd->limit_high   = ((limit >> 16) & 0x0f) | ((ar >> 8) & 0xf0); // 高 4 位段界限 + 标志(G/D/B/L/AVL)
 	sd->base_high    = (base >> 24) & 0xff;      // 基地址高 8 位
@@ -109,6 +113,7 @@ void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, i
 
 // ============================================================
 // set_gatedesc — 填写一个门描述符（8 字节）
+// 门描述符用于 IDT，定义中断/异常处理程序的入口地址和所属代码段，以及访问权限。
 //
 // 参数：
 //   gd       = 指向目标门描述符的指针

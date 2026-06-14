@@ -62,6 +62,10 @@ void init_gdtidt(void)
 		set_gatedesc(idt + i, 0, 0, 0); // 清零：所有中断暂未注册处理程序
 	}
 	load_idtr(0x7ff, 0x0026f800); // IDTR: 表限长 = 2KB(256×8-1), 表地址 = 0x26f800
+	
+	set_gatedesc(idt + 0x21, (int) asm_inthandler21, 2 * 8, AR_INTGATE32); // 注册键盘中断处理程序（INT 0x21 = IRQ1）
+	set_gatedesc(idt + 0x27, (int) asm_inthandler27, 2 * 8, AR_INTGATE32); // 注册 PIC1（从片）屏蔽中断处理程序（INT 0x27 = IRQ7，主片的伪中断）
+	set_gatedesc(idt + 0x2c, (int) asm_inthandler2c, 2 * 8, AR_INTGATE32); // 注册鼠标中断处理程序（INT 0x2C = IRQ12）
 
 	return;
 }

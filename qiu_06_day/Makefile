@@ -3,7 +3,8 @@
 # 定义工具链路径、编译规则和便捷命令
 # ============================================================
 
-OBJS_BOOTPACK = bootpack.obj naskfunc.obj hankaku.obj graphic.obj dsctbl.obj
+OBJS_BOOTPACK = bootpack.obj naskfunc.obj hankaku.obj graphic.obj dsctbl.obj \
+		int.obj
 
 
 # ---------- 工具链路径 ----------
@@ -53,37 +54,15 @@ asmhead.bin : asmhead.nas Makefile
 naskfunc.obj : naskfunc.nas Makefile
 	$(NASK) naskfunc.nas naskfunc.obj naskfunc.lst
 
-# 编译 bootpack.c → .gas
-bootpack.gas : bootpack.c Makefile
-	$(CC1) -o bootpack.gas bootpack.c
+# 通用编译规则（模式规则，自动匹配所有 .c → .gas → .nas → .obj）
+%.gas : %.c Makefile
+	$(CC1) -o $*.gas $*.c
 
-# bootpack.gas → NASM 格式
-bootpack.nas : bootpack.gas Makefile
-	$(GAS2NASK) bootpack.gas bootpack.nas
+%.nas : %.gas Makefile
+	$(GAS2NASK) $*.gas $*.nas
 
-# bootpack.nas → .obj
-bootpack.obj : bootpack.nas Makefile
-	$(NASK) bootpack.nas bootpack.obj bootpack.lst
-
-# 编译 graphic.c → .gas → .nas → .obj
-graphic.gas : graphic.c Makefile
-	$(CC1) -o graphic.gas graphic.c
-
-graphic.nas : graphic.gas Makefile
-	$(GAS2NASK) graphic.gas graphic.nas
-
-graphic.obj : graphic.nas Makefile
-	$(NASK) graphic.nas graphic.obj graphic.lst
-
-# 编译 dsctbl.c → .gas → .nas → .obj
-dsctbl.gas : dsctbl.c Makefile
-	$(CC1) -o dsctbl.gas dsctbl.c
-
-dsctbl.nas : dsctbl.gas Makefile
-	$(GAS2NASK) dsctbl.gas dsctbl.nas
-
-dsctbl.obj : dsctbl.nas Makefile
-	$(NASK) dsctbl.nas dsctbl.obj dsctbl.lst
+%.obj : %.nas Makefile
+	$(NASK) $*.nas $*.obj $*.lst
 
 # ═══════════════════════════════════════════════════════════════
 # 【新增】字库生成规则（第5天加入）
@@ -102,9 +81,10 @@ hankaku.obj : hankaku.bin Makefile
 # 导致链接报错 "can't link _hankaku"
 # 【第6天追加】加入 graphic.obj（图形绘制函数）和 dsctbl.obj（GDT/IDT 表初始化）
 # ═══════════════════════════════════════════════════════════════
-bootpack.bim : bootpack.obj naskfunc.obj hankaku.obj graphic.obj dsctbl.obj Makefile
+# 链接所有 .obj → bootpack.bim（使用 OBJS_BOOTPACK 宏避免重复）
+bootpack.bim : $(OBJS_BOOTPACK) Makefile
 	$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map \
-		bootpack.obj naskfunc.obj hankaku.obj graphic.obj dsctbl.obj
+		$(OBJS_BOOTPACK)
 
 # BIM → HRB 格式（haribote 专用，加载基址偏移 0）
 bootpack.hrb : bootpack.bim Makefile
@@ -146,7 +126,7 @@ clean :
 	-$(DEL) *.lst
 	-$(DEL) *.gas
 	-$(DEL) *.obj
-	-$(DEL) bootpack.nas
+	-$(DEL) bootpack.nas graphic.nas dsctbl.nas int.nas
 	-$(DEL) bootpack.map
 	-$(DEL) bootpack.bim
 	-$(DEL) bootpack.hrb

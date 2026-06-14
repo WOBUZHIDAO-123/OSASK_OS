@@ -27,6 +27,11 @@
     GLOBAL _io_out8, _io_out16, _io_out32 ; I/O 端口写入（8/16/32 位）
     GLOBAL _io_load_eflags, _io_store_eflags  ; EFLAGS 寄存器操作
     GLOBAL _load_gdtr, _load_idtr             ; GDT/IDT 表寄存器加载（GDTR/IDTR）
+    GLOBAL _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c  ; 中断处理入口（键盘/伪中断/鼠标）
+
+; 外部函数引用 —— 由 C 语言 int.c 导出的中断处理函数
+; 汇编中 CALL 时必须先 EXTERN 声明，链接器才能找到对应的 C 符号
+    EXTERN _inthandler21, _inthandler27, _inthandler2c
 
 
 [SECTION .text]
@@ -287,3 +292,70 @@ _load_idtr:
         MOV		[ESP+6],AX		; 写入伪描述符低 2 字节
         LIDT	[ESP+6]			; 从栈加载 6 字节伪描述符到 IDTR
         RET
+
+
+; ============================================================
+; 键盘中断处理入口（IRQ1 → IDT 0x21）
+; CPU 收到键盘中断时通过 IDT[0x21] 的门描述符跳转到此
+; 流程：保存现场 → 传栈指针给 C → 统一段寄存器 → CALL C 函数 → 恢复 → IRETD
+; ============================================================
+_asm_inthandler21:
+    PUSH    ES
+    PUSH    DS
+    PUSHAD
+    MOV     EAX,ESP
+    PUSH    EAX
+    MOV     AX,SS
+    MOV     DS,AX
+    MOV     ES,AX
+    CALL    _inthandler21
+    POP     EAX
+    POPAD
+    POP     DS
+    POP     ES
+    IRETD
+
+
+; ============================================================
+; PIC1 伪中断处理入口（IRQ7 → IDT 0x27）
+; 主 PIC 通过 IRQ2 接收从 PIC 的中继。当从片发出中断但具体 IRQ 被屏蔽时，
+; 主 PIC 发 IRQ7 伪中断兜底，必须注册避免系统死锁。
+; 结构与 _asm_inthandler21 完全相同
+; ============================================================
+_asm_inthandler27:
+    PUSH    ES
+    PUSH    DS
+    PUSHAD
+    MOV     EAX,ESP
+    PUSH    EAX
+    MOV     AX,SS
+    MOV     DS,AX
+    MOV     ES,AX
+    CALL    _inthandler27
+    POP     EAX
+    POPAD
+    POP     DS
+    POP     ES
+    IRETD
+
+
+; ============================================================
+; 鼠标中断处理入口（IRQ12 → IDT 0x2C）
+; 鼠标使用 PS/2 通道，从 PIC 管理 IRQ8~IRQ15，IRQ12 映射到 IDT 0x2C。
+; 结构与 _asm_inthandler21 完全相同
+; ============================================================
+_asm_inthandler2c:
+    PUSH    ES
+    PUSH    DS
+    PUSHAD
+    MOV     EAX,ESP
+    PUSH    EAX
+    MOV     AX,SS
+    MOV     DS,AX
+    MOV     ES,AX
+    CALL    _inthandler2c
+    POP     EAX
+    POPAD
+    POP     DS
+    POP     ES
+    IRETD

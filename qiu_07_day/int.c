@@ -1,6 +1,6 @@
 #include "bootpack.h" // 包含全局定义和函数声明
 
-#define PORT_KEYDAT 0x0060  /* 键盘数据端口地址 */
+#define PORT_KEYDAT 0x0060 /* 键盘数据端口地址 */
 
 /*PIC的初始化*/
 void init_pic(void)
@@ -54,12 +54,12 @@ void inthandler21(int *esp)
     // 键盘每次按键/松键都会产生一个扫描码字节
     data = io_in8(PORT_KEYDAT);
 
-    // flag=0: 缓冲区空，flag=1: 缓冲区有数据尚未被读取
     // 如果缓冲区为空（主循环尚未读取上一次的数据），则将本次扫描码存入缓冲区
     // 若缓冲区已满，则丢弃本次数据（避免覆盖未读取的数据）
-    if (keybuf.flag == 0) {
-        keybuf.data = data;     // 存储扫描码
-        keybuf.flag = 1;        // 标记缓冲区有数据
+    if (keybuf.next < 32)
+    {
+        keybuf.data[keybuf.next] = data; // 存储扫描码
+        keybuf.next++;                   // 更新下一个数据位置
     }
 
     return;

@@ -30,16 +30,17 @@
  *
  * ADR_BOOTINFO = 0x00000ff0 是结构体在内存中的基地址。
  * ============================================================ */
-struct BOOTINFO {
-	char cyls;      // 磁盘柱面数（IPL 读了几个柱面）
-	char leds;      // 键盘 LED 状态（Num Lock / Caps Lock / Scroll Lock）
-	char vmode;     // 显示模式色彩位数（8 = 256色）
-	char reserve;   // 对齐填充
-	short scrnx;    // 屏幕宽度（像素）
-	short scrny;    // 屏幕高度（像素）
-	char *vram;     // 显存基址
+struct BOOTINFO
+{
+	char cyls;	  // 磁盘柱面数（IPL 读了几个柱面）
+	char leds;	  // 键盘 LED 状态（Num Lock / Caps Lock / Scroll Lock）
+	char vmode;	  // 显示模式色彩位数（8 = 256色）
+	char reserve; // 对齐填充
+	short scrnx;  // 屏幕宽度（像素）
+	short scrny;  // 屏幕高度（像素）
+	char *vram;	  // 显存基址
 };
-#define ADR_BOOTINFO	0x00000ff0	/* ADR_BOOTINFO = 0x00000ff0 是结构体在内存中的基地址 */
+#define ADR_BOOTINFO 0x00000ff0 /* ADR_BOOTINFO = 0x00000ff0 是结构体在内存中的基地址 */
 
 /* ============================================================
  * I/O 底层函数 — 实现在 naskfunc.nas 中
@@ -150,7 +151,7 @@ void init_mouse_cursor8(char *mouse, char bc);
 //   pxsize,pysize: 图块宽度/高度（像素）, px0,py0: 图块在屏幕上的目标左上角坐标
 //   buf: 图案缓冲区（一维数组）, bxsize: 缓冲区一行像素数（通常与 pxsize 相同）
 void putblock8_8(char *vram, int vxsize, int pxsize,
-	int pysize, int px0, int py0, char *buf, int bxsize);
+				 int pysize, int px0, int py0, char *buf, int bxsize);
 
 /* ============================================================
  * 颜色号宏 — 调色板编号的语义化名称
@@ -159,22 +160,22 @@ void putblock8_8(char *vram, int vxsize, int pxsize,
  * 将编号翻译成真实 RGB。这里的宏对应 init_palette 设定的前 16 色。
  * 注意编号不是真实颜色值，只是调色板索引。
  * ============================================================ */
-#define COL8_000000		0   // 黑
-#define COL8_FF0000		1   // 亮红
-#define COL8_00FF00		2   // 亮绿
-#define COL8_FFFF00		3   // 亮黄
-#define COL8_0000FF		4   // 亮蓝
-#define COL8_FF00FF		5   // 亮紫
-#define COL8_00FFFF		6   // 浅亮蓝
-#define COL8_FFFFFF		7   // 白
-#define COL8_C6C6C6		8   // 亮灰
-#define COL8_840000		9   // 暗红
-#define COL8_008400		10  // 暗绿
-#define COL8_848400		11  // 暗黄
-#define COL8_000084		12  // 暗蓝
-#define COL8_840084		13  // 暗紫
-#define COL8_008484		14  // 暗浅蓝
-#define COL8_848484		15  // 暗灰
+#define COL8_000000 0  // 黑
+#define COL8_FF0000 1  // 亮红
+#define COL8_00FF00 2  // 亮绿
+#define COL8_FFFF00 3  // 亮黄
+#define COL8_0000FF 4  // 亮蓝
+#define COL8_FF00FF 5  // 亮紫
+#define COL8_00FFFF 6  // 浅亮蓝
+#define COL8_FFFFFF 7  // 白
+#define COL8_C6C6C6 8  // 亮灰
+#define COL8_840000 9  // 暗红
+#define COL8_008400 10 // 暗绿
+#define COL8_848400 11 // 暗黄
+#define COL8_000084 12 // 暗蓝
+#define COL8_840084 13 // 暗紫
+#define COL8_008484 14 // 暗浅蓝
+#define COL8_848484 15 // 暗灰
 
 /* ============================================================
  * 描述符表数据结构 — 保护模式的内存分段与中断机制
@@ -194,18 +195,20 @@ void putblock8_8(char *vram, int vxsize, int pxsize,
  *   0x0026f800 — IDT 起始（2 KB，256 个门描述符）
  * ============================================================ */
 
-//整个段描述符占 8 字节共64位，包含了段界限（20位）、基地址（base共32位）和访问权限等信息（8位），标志（4位）。
-//段界限可以是字节单位（G=0）或 4KB 单位（G=1），基地址指定段的起始地址，访问权限定义了段的类型和特权级别。
-//分段是为了兼容8086时代的实模式程序，保护模式下虽然可以使用分页机制，但分段机制仍然存在并且必须正确设置，否则 CPU 无法访问内存。
-struct SEGMENT_DESCRIPTOR {
-	short limit_low, base_low;	// 段界限低 16 位 + 基地址低 16 位
-	char base_mid, access_right;	// 基地址中 8 位 + 访问权（P_DPL_S_TYPE）
-	char limit_high, base_high;	// 段界限高 4 位+标志 + 基地址高 8 位
+// 整个段描述符占 8 字节共64位，包含了段界限（20位）、基地址（base共32位）和访问权限等信息（8位），标志（4位）。
+// 段界限可以是字节单位（G=0）或 4KB 单位（G=1），基地址指定段的起始地址，访问权限定义了段的类型和特权级别。
+// 分段是为了兼容8086时代的实模式程序，保护模式下虽然可以使用分页机制，但分段机制仍然存在并且必须正确设置，否则 CPU 无法访问内存。
+struct SEGMENT_DESCRIPTOR
+{
+	short limit_low, base_low;	 // 段界限低 16 位 + 基地址低 16 位
+	char base_mid, access_right; // 基地址中 8 位 + 访问权（P_DPL_S_TYPE）
+	char limit_high, base_high;	 // 段界限高 4 位+标志 + 基地址高 8 位
 };
-struct GATE_DESCRIPTOR {
-	short offset_low, selector;	// 处理程序地址低 16 位 + 代码段选择子
-	char dw_count, access_right;	// 参数计数（调用门用）+ 访问权
-	short offset_high;		// 处理程序地址高 16 位
+struct GATE_DESCRIPTOR
+{
+	short offset_low, selector;	 // 处理程序地址低 16 位 + 代码段选择子
+	char dw_count, access_right; // 参数计数（调用门用）+ 访问权
+	short offset_high;			 // 处理程序地址高 16 位
 };
 
 /* ============================================================
@@ -230,15 +233,15 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
 /* ============================================================
  * 地址与权限常量
  * ============================================================ */
-#define ADR_IDT			0x0026f800	// IDT 基地址（256 个门描述符 × 8 字节 = 2 KB）
-#define LIMIT_IDT		0x000007ff	// IDT 界限（2 KB - 1 = 0x7FF）
-#define ADR_GDT			0x00270000	// GDT 基地址（8192 个段描述符 × 8 字节 = 64 KB）
-#define LIMIT_GDT		0x0000ffff	// GDT 界限（64 KB - 1 = 0xFFFF）
-#define ADR_BOTPAK		0x00280000	// bootpack 在内存中的加载地址
-#define LIMIT_BOTPAK		0x0007ffff	// bootpack 段界限（512 KB - 1）
-#define AR_DATA32_RW		0x4092		// 数据段 ar：G=1 D=1 P=1 DPL=0 S=1 W=1
-#define AR_CODE32_ER		0x409a		// 代码段 ar：G=1 D=1 P=1 DPL=0 S=1 E=1 R=1
-#define AR_INTGATE32		0x008e		// 中断门 ar：P=1 DPL=0 S=0 TYPE=1110(32位中断门)
+#define ADR_IDT 0x0026f800		// IDT 基地址（256 个门描述符 × 8 字节 = 2 KB）
+#define LIMIT_IDT 0x000007ff	// IDT 界限（2 KB - 1 = 0x7FF）
+#define ADR_GDT 0x00270000		// GDT 基地址（8192 个段描述符 × 8 字节 = 64 KB）
+#define LIMIT_GDT 0x0000ffff	// GDT 界限（64 KB - 1 = 0xFFFF）
+#define ADR_BOTPAK 0x00280000	// bootpack 在内存中的加载地址
+#define LIMIT_BOTPAK 0x0007ffff // bootpack 段界限（512 KB - 1）
+#define AR_DATA32_RW 0x4092		// 数据段 ar：G=1 D=1 P=1 DPL=0 S=1 W=1
+#define AR_CODE32_ER 0x409a		// 代码段 ar：G=1 D=1 P=1 DPL=0 S=1 E=1 R=1
+#define AR_INTGATE32 0x008e		// 中断门 ar：P=1 DPL=0 S=0 TYPE=1110(32位中断门)
 
 /* ============================================================
  * PIC（可编程中断控制器）初始化函数和端口宏
@@ -268,23 +271,24 @@ void inthandler21(int *esp);
 void inthandler27(int *esp);
 void inthandler2c(int *esp);
 void show_keybuf(void);
-#define PIC0_ICW1		0x0020		// 主 PIC ICW1（边沿触发、级联、需要 ICW4）
-#define PIC0_OCW2		0x0020		// 主 PIC OCW2（发送 EOI 通知中断结束）
-#define PIC0_IMR		0x0021		// 主 PIC IMR（屏蔽/启用中断）
-#define PIC0_ICW2		0x0021		// 主 PIC ICW2（IRQ 基向量号）
-#define PIC0_ICW3		0x0021		// 主 PIC ICW3（级联连接，bit2 接从 PIC）
-#define PIC0_ICW4		0x0021		// 主 PIC ICW4（8086 模式，自动 EOI）
-#define PIC1_ICW1		0x00a0		// 从 PIC ICW1
-#define PIC1_OCW2		0x00a0		// 从 PIC OCW2
-#define PIC1_IMR		0x00a1		// 从 PIC IMR
-#define PIC1_ICW2		0x00a1		// 从 PIC ICW2
-#define PIC1_ICW3		0x00a1		// 从 PIC ICW3（级联标识，接主 PIC 的 IRQ2）
-#define PIC1_ICW4		0x00a1		// 从 PIC ICW4
-
+#define PIC0_ICW1 0x0020 // 主 PIC ICW1（边沿触发、级联、需要 ICW4）
+#define PIC0_OCW2 0x0020 // 主 PIC OCW2（发送 EOI 通知中断结束）
+#define PIC0_IMR 0x0021	 // 主 PIC IMR（屏蔽/启用中断）
+#define PIC0_ICW2 0x0021 // 主 PIC ICW2（IRQ 基向量号）
+#define PIC0_ICW3 0x0021 // 主 PIC ICW3（级联连接，bit2 接从 PIC）
+#define PIC0_ICW4 0x0021 // 主 PIC ICW4（8086 模式，自动 EOI）
+#define PIC1_ICW1 0x00a0 // 从 PIC ICW1
+#define PIC1_OCW2 0x00a0 // 从 PIC OCW2
+#define PIC1_IMR 0x00a1	 // 从 PIC IMR
+#define PIC1_ICW2 0x00a1 // 从 PIC ICW2
+#define PIC1_ICW3 0x00a1 // 从 PIC ICW3（级联标识，接主 PIC 的 IRQ2）
+#define PIC1_ICW4 0x00a1 // 从 PIC ICW4
 
 /* ============================================================
  * 键盘缓冲区结构体 — 在 int.c 中定义全局变量
  * ============================================================ */
-struct KEYBUF {
-    unsigned char data,flag;  // data 存储键盘扫描码，flag 标志位表示缓冲区状态（0=空，1=有数据）
+struct KEYBUF
+{
+	unsigned char data[32]; // data 存储键盘扫描码，flag 标志位表示缓冲区状态（0=空，1=有数据）
+	int next;				// next 指向下一个可写入数据的位置，范围 0~31，满时覆盖最旧的数据（循环缓冲区）
 };

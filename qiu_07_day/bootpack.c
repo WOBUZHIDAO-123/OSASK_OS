@@ -20,22 +20,22 @@ void HariMain(void)
 {
 	struct BOOTINFO *binfo = (struct BOOTINFO *)ADR_BOOTINFO;
 	char s[40], mcursor[256];
-	int mx, my, i;
+	int mx, my, i, j;
 
 	// ---------- 硬件初始化 ----------
-	init_gdtidt();                                  // 设置 GDT + IDT（内存段描述符+中断描述符表）
-	init_pic();                                     // 初始化 PIC（中断控制器，映射 IRQ→INT 号）
-	io_sti();                                       // IDT/PIC 初始化结束，解除 CPU 中断禁止（允许中断）
+	init_gdtidt(); // 设置 GDT + IDT（内存段描述符+中断描述符表）
+	init_pic();	   // 初始化 PIC（中断控制器，映射 IRQ→INT 号）
+	io_sti();	   // IDT/PIC 初始化结束，解除 CPU 中断禁止（允许中断）
 
 	// ---------- 图形界面初始化 ----------
-	init_palette();                                 // 设置 VGA 调色板（前 16 色）
-	init_screen8(binfo->vram, binfo->scrnx, binfo->scrny); // 绘制桌面背景+任务栏
-	mx = (binfo->scrnx - 16) / 2;                   // 鼠标指针 X 坐标：屏幕水平居中
-	my = (binfo->scrny - 28 - 16) / 2;              // 鼠标指针 Y 坐标：桌面区域垂直居中
-	init_mouse_cursor8(mcursor, COL8_008484);       // 生成鼠标图案到缓冲区
+	init_palette();														 // 设置 VGA 调色板（前 16 色）
+	init_screen8(binfo->vram, binfo->scrnx, binfo->scrny);				 // 绘制桌面背景+任务栏
+	mx = (binfo->scrnx - 16) / 2;										 // 鼠标指针 X 坐标：屏幕水平居中
+	my = (binfo->scrny - 28 - 16) / 2;									 // 鼠标指针 Y 坐标：桌面区域垂直居中
+	init_mouse_cursor8(mcursor, COL8_008484);							 // 生成鼠标图案到缓冲区
 	putblock8_8(binfo->vram, binfo->scrnx, 16, 16, mx, my, mcursor, 16); // 画鼠标到屏幕
-	sprintf(s, "(%d, %d)", mx, my);                 // 组装坐标字符串
-	putfonts8_asc(binfo->vram, binfo->scrnx, 0, 0, COL8_FFFFFF, s); // 在左上角显示坐标
+	sprintf(s, "(%d, %d)", mx, my);										 // 组装坐标字符串
+	putfonts8_asc(binfo->vram, binfo->scrnx, 0, 0, COL8_FFFFFF, s);		 // 在左上角显示坐标
 
 	// ---------- 允许特定设备中断 ----------
 	io_out8(PIC0_IMR, 0xf9); /* 11111001 → 允许 PIC1（级联）和键盘（IRQ1）*/
@@ -55,19 +55,25 @@ void HariMain(void)
 	// ============================================================
 	for (;;)
 	{
-		io_cli();                                    // 关中断：原子操作保护
-		if (keybuf.flag == 0)                        // 键盘缓冲区为空？
+		io_cli();			  // 关中断：原子操作保护
+		if (keybuf.next == 0) // 键盘缓冲区为空？
 		{
-			io_stihlt();                             // 开中断 + HLT 待机，等待中断唤醒
+			io_stihlt(); // 开中断 + HLT 待机，等待中断唤醒
 		}
-		else                                         // 键盘缓冲区有数据
+		else // 键盘缓冲区有数据
 		{
-			i = keybuf.data;                         // 取出键盘扫描码
-			keybuf.flag = 0;                         // 清标志位：缓冲区已读空
-			io_sti();                                // 开中断（显示操作不受影响）
+			i = keybuf.data[0]; // 取出键盘扫描码
+			keybuf.next--;		// 更新缓冲区状态（标记已读取）
+			for (j = 0; j < 32; j++)
+			{
+				keybuf.data[j] = keybuf.data[j + 1]; // 数据前移，保持队列结构
+				// 这里数据前移是因为每次循环变量“i”都会将第一个数据data[0]保存，被保存的数据就不需要了
+				//所以剩余数据需要前移填补上data[0]的位置，保持数据连续性
+			}
+			io_sti(); // 开中断（显示操作不受影响）
 
 			// 将扫描码格式化为 2 位 16 进制字符串并显示
-			sprintf(s, "%02X", i);                   // 例：按键 'A' → "1E"
+			sprintf(s, "%02X", i);											 // 例：按键 'A' → "1E"
 			boxfill8(binfo->vram, binfo->scrnx, COL8_008484, 0, 16, 15, 31); // 清空显示区域（覆盖旧数据）
 			putfonts8_asc(binfo->vram, binfo->scrnx, 0, 16, COL8_FFFFFF, s); // 显示键盘数据
 		}

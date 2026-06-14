@@ -142,3 +142,38 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
 #define LIMIT_BOTPAK		0x0007ffff	// bootpack 段界限（512 KB - 1）
 #define AR_DATA32_RW		0x4092		// 数据段 ar：G=1 D=1 P=1 DPL=0 S=1 W=1
 #define AR_CODE32_ER		0x409a		// 代码段 ar：G=1 D=1 P=1 DPL=0 S=1 E=1 R=1
+
+/* ============================================================
+ * PIC（可编程中断控制器）初始化函数和端口宏
+ *
+ * 主 PIC（PIC0）管理 IRQ0~IRQ7，端口 0x20~0x21
+ * 从 PIC（PIC1）管理 IRQ8~IRQ15，端口 0xA0~0xA1
+ *
+ * 中断向量映射（PIC ICW2 设定）：
+ *   主 PIC IRQ0~IRQ7 → IDT 0x20~0x27
+ *   从 PIC IRQ8~IRQ15 → IDT 0x28~0x2F
+ *   为什么从 0x20 开始？因为 IDT 0x00~0x1F 已被 CPU 异常占满
+ *   （除零、调试、GPF 等 32 个异常向量），硬件中断必须避开这片区域
+ *
+ * 常见设备 IRQ 编号：
+ *   IRQ0（0x20）= PIT 定时器
+ *   IRQ1（0x21）= 键盘
+ *   IRQ12（0x2C）= 鼠标
+ *
+ * ICW（Initialization Command Word）：初始化控制数据，有4个，每个1字节，配置 PIC 的工作模式和连接方式
+ * OCW（Operation Command Word）：操作命令字
+ * IMR（Interrupt Mask Register）：中断屏蔽寄存器,8位，每位对应一个 IRQ（连接PIC和CPU的连接线），1=屏蔽（禁止），0=允许
+ * ============================================================ */
+void init_pic(void);						// 初始化主从 PIC
+#define PIC0_ICW1		0x0020		// 主 PIC ICW1（边沿触发、级联、需要 ICW4）
+#define PIC0_OCW2		0x0020		// 主 PIC OCW2（发送 EOI 通知中断结束）
+#define PIC0_IMR		0x0021		// 主 PIC IMR（屏蔽/启用中断）
+#define PIC0_ICW2		0x0021		// 主 PIC ICW2（IRQ 基向量号）
+#define PIC0_ICW3		0x0021		// 主 PIC ICW3（级联连接，bit2 接从 PIC）
+#define PIC0_ICW4		0x0021		// 主 PIC ICW4（8086 模式，自动 EOI）
+#define PIC1_ICW1		0x00a0		// 从 PIC ICW1
+#define PIC1_OCW2		0x00a0		// 从 PIC OCW2
+#define PIC1_IMR		0x00a1		// 从 PIC IMR
+#define PIC1_ICW2		0x00a1		// 从 PIC ICW2
+#define PIC1_ICW3		0x00a1		// 从 PIC ICW3（级联标识，接主 PIC 的 IRQ2）
+#define PIC1_ICW4		0x00a1		// 从 PIC ICW4

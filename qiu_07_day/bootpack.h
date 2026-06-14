@@ -261,6 +261,7 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
  * OCW（Operation Command Word）：操作命令字
  * IMR（Interrupt Mask Register）：中断屏蔽寄存器,8位，每位对应一个 IRQ（连接PIC和CPU的连接线），1=屏蔽（禁止），0=允许
  * ============================================================ */
+
 // 初始化主从 PIC（8259A），映射 IRQ0~IRQ7 → IDT 0x20~0x27, IRQ8~IRQ15 → IDT 0x28~0x2F
 void init_pic(void);
 void inthandler21(int *esp);
@@ -279,3 +280,11 @@ void show_keybuf(void);
 #define PIC1_ICW2		0x00a1		// 从 PIC ICW2
 #define PIC1_ICW3		0x00a1		// 从 PIC ICW3（级联标识，接主 PIC 的 IRQ2）
 #define PIC1_ICW4		0x00a1		// 从 PIC ICW4
+
+
+/* ============================================================
+ * 键盘缓冲区结构体 — 在 int.c 中定义全局变量
+ * ============================================================ */
+struct KEYBUF {
+    unsigned char data,flag;  // data 存储键盘扫描码，flag 标志位表示缓冲区状态（0=空，1=有数据）
+};

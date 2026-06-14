@@ -290,5 +290,5 @@ void show_keybuf(void);
 struct KEYBUF
 {
 	unsigned char data[32]; // data 存储键盘扫描码，flag 标志位表示缓冲区状态（0=空，1=有数据）
-	int next;				// next 指向下一个可写入数据的位置，范围 0~31，满时覆盖最旧的数据（循环缓冲区）
+	int read, next;			// read 指向下一个可读取数据的位置，next 指向下一个可写入数据的位置（循环缓冲区）
 };

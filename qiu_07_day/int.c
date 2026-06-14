@@ -56,10 +56,9 @@ void inthandler21(int *esp)
 
     // 如果缓冲区为空（主循环尚未读取上一次的数据），则将本次扫描码存入缓冲区
     // 若缓冲区已满，则丢弃本次数据（避免覆盖未读取的数据）
-    if (keybuf.next < 32)
-    {
-        keybuf.data[keybuf.next] = data; // 存储扫描码
-        keybuf.next++;                   // 更新下一个数据位置
+    if(keybuf.next<32){
+        keybuf.data[keybuf.next]=data;
+        keybuf.next=(keybuf.next+1)%32; // 循环缓冲区，超过32则回到0
     }
 
     return;

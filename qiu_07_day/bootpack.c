@@ -56,20 +56,14 @@ void HariMain(void)
 	for (;;)
 	{
 		io_cli();			  // 关中断：原子操作保护
-		if (keybuf.next == 0) // 键盘缓冲区为空？
+		if (keybuf.next == keybuf.read) // 环形缓冲区中next等于read表示没有数据
 		{
 			io_stihlt(); // 开中断 + HLT 待机，等待中断唤醒
 		}
 		else // 键盘缓冲区有数据
 		{
-			i = keybuf.data[0]; // 取出键盘扫描码
-			keybuf.next--;		// 更新缓冲区状态（标记已读取）
-			for (j = 0; j < 32; j++)
-			{
-				keybuf.data[j] = keybuf.data[j + 1]; // 数据前移，保持队列结构
-				// 这里数据前移是因为每次循环变量“i”都会将第一个数据data[0]保存，被保存的数据就不需要了
-				//所以剩余数据需要前移填补上data[0]的位置，保持数据连续性
-			}
+			i = keybuf.data[keybuf.read]; // 取出键盘扫描码
+			keybuf.read=(keybuf.read+1)%32; // 更新缓冲区状态（标记已读取）
 			io_sti(); // 开中断（显示操作不受影响）
 
 			// 将扫描码格式化为 2 位 16 进制字符串并显示

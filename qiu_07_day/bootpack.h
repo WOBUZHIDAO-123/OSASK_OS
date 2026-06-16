@@ -59,7 +59,7 @@ void io_cli(void);
 // 执行 STI 指令，设置 EFLAGS 寄存器的 IF 位（bit9），允许 CPU 响应可屏蔽中断
 void io_sti(void);
 
-// 先执行 STI 开中断，再立即执行 HLT 待机（常用于主循环空闲时，可响应中断又省电）
+// 先执行 STI 恢复对 PIC 中断信号的响应，再立即执行 HLT 待机（常用于主循环空闲时，可响应中断又省电）
 void io_stihlt(void);
 
 // 从指定 I/O 端口读取 8 位（1 字节）数据

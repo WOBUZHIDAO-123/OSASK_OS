@@ -3,14 +3,14 @@
  *
  * 第7天新增功能：键盘按键显示
  *   在屏幕左上角显示按下的键盘按键的16进制编码（扫描码）
- *   通过轮询键盘缓冲区 keybuf，由中断处理函数填充数据
+ *   通过轮询 FIFO8 环形缓冲区 keyfifo，由中断处理函数填充数据
  * ============================================================ */
 
 #include "bootpack.h"
 #include <stdio.h>
 
-// 导入键盘缓冲区全局变量（由 int.c 定义，中断处理函数填充数据）
-extern struct KEYBUF keybuf;
+// 导入键盘 FIFO 缓冲区全局变量（由 int.c 定义，中断处理函数填充数据）
+extern struct FIFO8 keyfifo;
 
 // ============================================================
 // HariMain — 系统主入口
@@ -19,56 +19,81 @@ extern struct KEYBUF keybuf;
 void HariMain(void)
 {
 	struct BOOTINFO *binfo = (struct BOOTINFO *)ADR_BOOTINFO;
-	char s[40], mcursor[256];
-	int mx, my, i, j;
+	char s[40], mcursor[256], keybuf[32];
+	int mx, my, i;
 
-	// ---------- 硬件初始化 ----------
-	init_gdtidt(); // 设置 GDT + IDT（内存段描述符+中断描述符表）
-	init_pic();	   // 初始化 PIC（中断控制器，映射 IRQ→INT 号）
-	io_sti();	   // IDT/PIC 初始化结束，解除 CPU 中断禁止（允许中断）
+	// ============================================================
+	// 第一步：硬件初始化
+	//   ① 设置 GDT（全局描述符表）和 IDT（中断描述符表）
+	//   ② 初始化 PIC（可编程中断控制器），映射 IRQ → INT 号
+	//   ③ 开中断（STI），CPU 开始响应外部中断
+	// ============================================================
+	init_gdtidt();
+	init_pic();
+	io_sti();
 
-	// ---------- 图形界面初始化 ----------
-	init_palette();														 // 设置 VGA 调色板（前 16 色）
-	init_screen8(binfo->vram, binfo->scrnx, binfo->scrny);				 // 绘制桌面背景+任务栏
-	mx = (binfo->scrnx - 16) / 2;										 // 鼠标指针 X 坐标：屏幕水平居中
-	my = (binfo->scrny - 28 - 16) / 2;									 // 鼠标指针 Y 坐标：桌面区域垂直居中
-	init_mouse_cursor8(mcursor, COL8_008484);							 // 生成鼠标图案到缓冲区
-	putblock8_8(binfo->vram, binfo->scrnx, 16, 16, mx, my, mcursor, 16); // 画鼠标到屏幕
-	sprintf(s, "(%d, %d)", mx, my);										 // 组装坐标字符串
-	putfonts8_asc(binfo->vram, binfo->scrnx, 0, 0, COL8_FFFFFF, s);		 // 在左上角显示坐标
+	// ============================================================
+	// 第二步：图形界面初始化
+	//   ① 设置调色板、绘制桌面背景和任务栏
+	//   ② 计算鼠标指针位置（屏幕中央）、生成鼠标图案并显示
+	//   ③ 在左上角显示鼠标坐标字符串
+	// ============================================================
 
-	// ---------- 允许特定设备中断 ----------
+	// --- 调色板和桌面 ---
+	init_palette();
+	init_screen8(binfo->vram, binfo->scrnx, binfo->scrny);
+
+	// --- 鼠标指针 ---
+	mx = (binfo->scrnx - 16) / 2;								// 水平居中
+	my = (binfo->scrny - 28 - 16) / 2;							// 垂直居中（避开任务栏）
+	init_mouse_cursor8(mcursor, COL8_008484);					// 生成鼠标图案
+	putblock8_8(binfo->vram, binfo->scrnx, 16, 16, mx, my, mcursor, 16); // 画到屏幕上
+
+	// --- 左上角信息显示 ---
+	sprintf(s, "(%d, %d)", mx, my);							// 组装坐标字符串
+	putfonts8_asc(binfo->vram, binfo->scrnx, 0, 0, COL8_FFFFFF, s); // 显示坐标
+
+	// ============================================================
+	// 第三步：初始化键盘 FIFO 缓冲区 + 允许设备中断
+	//   ① 初始化 FIFO8 环形缓冲区（32 字节）
+	//   ② 通过 PIC 的 IMR 寄存器允许键盘和鼠标中断
+	// ============================================================
+
+	// --- 初始化键盘 FIFO 缓冲区 ---
+	fifo8_init(&keyfifo, 32, keybuf);
+
+	// --- 设置 PIC 中断屏蔽寄存器 ---
 	io_out8(PIC0_IMR, 0xf9); /* 11111001 → 允许 PIC1（级联）和键盘（IRQ1）*/
 	io_out8(PIC1_IMR, 0xef); /* 11101111 → 允许鼠标（IRQ12）*/
 
 	// ============================================================
-	// 主循环：轮询键盘缓冲区
+	// 第四步：主循环 — 轮询键盘缓冲区
 	//
 	// 工作流程：
-	//   ① 关中断 → 检查 keybuf.flag
-	//   ② 若无数据 → STI + HLT（开中断 + 待机，等待键盘中断唤醒）
-	//   ③ 若有数据 → 读取扫描码 → 清 flag → 开中断 → 屏幕显示
+	//   ① 关中断 → 检查缓冲区是否有数据（fifo8_status）
+	//   ② 无数据 → STI + HLT（开中断 + 待机，等待键盘中断唤醒）
+	//   ③ 有数据 → fifo8_get 读取扫描码 → 开中断 → 屏幕显示
 	//
-	// 为什么要关中断再检查 keybuf？
-	//   防止在读取 keybuf 的瞬间中断发生，导致前后数据不一致。
-	//   关中断 → 读取 → 开中断，保证原子操作。
+	// 为什么要关中断再检查？
+	//   防止在读取缓冲区的瞬间中断发生，导致数据状态不一致。
+	//   关中断 → 检查/读取 → 开中断，保证原子操作。
 	// ============================================================
 	for (;;)
 	{
-		io_cli();			  // 关中断：原子操作保护
-		if (keybuf.next == keybuf.read) // 环形缓冲区中next等于read表示没有数据
+		io_cli();						// 关中断：保证后续的缓冲区操作是原子的
+		if (fifo8_status(&keyfifo) == 0)// 缓冲区为空？
 		{
-			io_stihlt(); // 开中断 + HLT 待机，等待中断唤醒
+			io_stihlt();				// 开中断 + HLT 待机，等键盘中断唤醒
 		}
-		else // 键盘缓冲区有数据
+		else
 		{
-			i = keybuf.data[keybuf.read]; // 取出键盘扫描码
-			keybuf.read=(keybuf.read+1)%32; // 更新缓冲区状态（标记已读取）
-			io_sti(); // 开中断（显示操作不受影响）
+			// 缓冲区有数据 → 读取扫描码
+			i = fifo8_get(&keyfifo);	// 从环形缓冲区取出一个字节
+			io_sti();					// 开中断（显示操作允许被中断）
 
-			// 将扫描码格式化为 2 位 16 进制字符串并显示
-			sprintf(s, "%02X", i);											 // 例：按键 'A' → "1E"
-			boxfill8(binfo->vram, binfo->scrnx, COL8_008484, 0, 16, 15, 31); // 清空显示区域（覆盖旧数据）
+			// 在屏幕左上角第二行（y=16）显示扫描码
+			sprintf(s, "%02X", i);		// 格式化为 2 位 16 进制（如 "1E"）
+			boxfill8(binfo->vram, binfo->scrnx, COL8_008484, 0, 16, 15, 31); // 清空显示区域
 			putfonts8_asc(binfo->vram, binfo->scrnx, 0, 16, COL8_FFFFFF, s); // 显示键盘数据
 		}
 	}

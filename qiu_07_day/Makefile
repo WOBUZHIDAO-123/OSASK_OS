@@ -4,7 +4,7 @@
 # ============================================================
 
 OBJS_BOOTPACK = bootpack.obj naskfunc.obj hankaku.obj graphic.obj dsctbl.obj \
-		int.obj
+		int.obj fifio.obj
 
 
 # ---------- 工具链路径 ----------

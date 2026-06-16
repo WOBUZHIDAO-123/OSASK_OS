@@ -30,7 +30,7 @@ void init_pic(void)
 // 中断处理函数 (inthandler21) 在中断发生时将扫描码写入此缓冲区
 // 主循环 (HariMain) 轮询此缓冲区，取出数据显示到屏幕
 // flag=0: 缓冲区空，flag=1: 缓冲区有数据尚未被读取
-struct KEYBUF keybuf;
+struct FIFO8 keyfifo;
 
 // ============================================================
 // inthandler21 — 键盘中断（IRQ1 → IDT 0x21）处理函数
@@ -53,13 +53,7 @@ void inthandler21(int *esp)
     // 从键盘控制器的数据端口（0x0060）读取按下的键对应的扫描码
     // 键盘每次按键/松键都会产生一个扫描码字节
     data = io_in8(PORT_KEYDAT);
-
-    // 如果缓冲区为空（主循环尚未读取上一次的数据），则将本次扫描码存入缓冲区
-    // 若缓冲区已满，则丢弃本次数据（避免覆盖未读取的数据）
-    if(keybuf.next<32){
-        keybuf.data[keybuf.next]=data;
-        keybuf.next=(keybuf.next+1)%32; // 循环缓冲区，超过32则回到0
-    }
+    fifo8_put(&keyfifo, data); // 将扫描码存入 keybuf 缓冲区（若缓冲区为空）
 
     return;
 }

@@ -292,3 +292,39 @@ struct KEYBUF
 	unsigned char data[32]; // data 存储键盘扫描码，flag 标志位表示缓冲区状态（0=空，1=有数据）
 	int read, next;			// read 指向下一个可读取数据的位置，next 指向下一个可写入数据的位置（循环缓冲区）
 };
+
+/* ============================================================
+ * FIF08 — 通用环形缓冲区结构体
+ *
+ * 相比 KEYBUF（固定 32 字节），FIF08 更加通用灵活：
+ *   - 缓冲区大小由调用者指定（不固定）
+ *   - 通过指针引用外部数组，内存由调用者管理
+ *   - 提供 free 成员跟踪剩余空间，不必遍历
+ *
+ * 使用场景：鼠标数据、键盘数据、或其他设备数据的缓冲
+ *
+ * 成员说明：
+ *   buf   — 缓冲区基地址指针（指向外部传入的数组）
+ *   p     — 写入位置索引（下一个数据写入的位置，写入后自增取模）
+ *   q     — 读取位置索引（下一个数据读取的位置，读取后自增取模）
+ *   size  — 缓冲区总容量（字节数，调用者分配时指定）
+ *   free  — 当前剩余空间（free==0 表示已满，free==size 表示空）
+ *   flags — 状态标志（当前未使用，预留将来指示溢出等状态）
+ * ============================================================ */
+struct FIFO8
+{
+	unsigned char *buf;
+	int p;
+	int q;
+	int size;
+	int free;
+	int flags;
+};
+
+/* ============================================================
+ * FIFO8 操作函数 — 实现在 fifio.c 中
+ * ============================================================ */
+void fifo8_init(struct FIFO8 *fifo, int size, unsigned char *buf);
+int  fifo8_put(struct FIFO8 *fifo, unsigned char data);
+int  fifo8_get(struct FIFO8 *fifo);
+int  fifo8_status(struct FIFO8 *fifo);

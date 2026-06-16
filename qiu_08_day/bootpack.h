@@ -283,7 +283,6 @@ void inthandler2c(int *esp);
 #define PIC1_ICW3 0x00a1 // 从 PIC ICW3（级联标识，接主 PIC 的 IRQ2）
 #define PIC1_ICW4 0x00a1 // 从 PIC ICW4
 
-
 /* ============================================================
  * FIF08 — 通用环形缓冲区结构体
  *
@@ -316,10 +315,9 @@ struct FIFO8
  * FIFO8 操作函数 — 实现在 fifio.c 中
  * ============================================================ */
 void fifo8_init(struct FIFO8 *fifo, int size, unsigned char *buf);
-int  fifo8_put(struct FIFO8 *fifo, unsigned char data);
-int  fifo8_get(struct FIFO8 *fifo);
-int  fifo8_status(struct FIFO8 *fifo);
-
+int fifo8_put(struct FIFO8 *fifo, unsigned char data);
+int fifo8_get(struct FIFO8 *fifo);
+int fifo8_status(struct FIFO8 *fifo);
 
 /* ============================================================
  * MOUSE_DEC — 鼠标数据解码结构体
@@ -329,10 +327,13 @@ int  fifo8_status(struct FIFO8 *fifo);
  * 由 mouse_decode 逐字节解码。
  *
  * 成员说明：
- *   buf[3] — 3 字节鼠标数据包
+ *   buf[3] — 3 字节鼠标数据包缓冲区
  *   phase  — 拼包状态：0=等 ACK, 1~3=收字节 0~2
+ *   x,y    — 鼠标位移量（相对值，带符号）
+ *   btn    — 鼠标按键状态（btn 低 3 位分别表示左中右键，1=按下，0=松开）
  * ============================================================ */
 struct MOUSE_DEC
 {
 	unsigned char buf[3], phase;
+	int x, y, btn;
 };

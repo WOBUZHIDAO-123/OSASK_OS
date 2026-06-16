@@ -153,46 +153,97 @@ void enable_mouse(struct MOUSE_DEC *mdec)
 	return;
 }
 
-int mouse_decode(struct MOUSE_DEC *mdec, unsigned char dat)
-// 功能：鼠标数据解码函数，逐步接收 3 字节数据包
+// ============================================================
+// mouse_decode — 鼠标数据包解码
+//
+// 功能：从鼠标 FIFO 逐字节接收并组装 3 字节数据包，
+//       完成字节拼接后解析出按键状态、X/Y 位移量。
+//
+// 解码流程（4 阶段状态机）：
+//    phase=0 — 等待 ACK（0xfa），确认鼠标已就绪
+//    phase=1 — 接收字节 0（按键状态 + 符号位），同步校验
+//    phase=2 — 接收字节 1（X 轴位移量，需符号扩展）
+//    phase=3 — 接收字节 2（Y 轴位移量，需符号扩展 + Y 轴取反）
+//
+// 鼠标数据包格式（字节 0）：
+//   bit0   — 左键（1=按下）
+//   bit1   — 右键（1=按下）
+//   bit2   — 中键（1=按下）
+//   bit3   — 固定为 1（用于同步校验）
+//   bit4   — X 位移符号位（1=负数）
+//   bit5   — Y 位移符号位（1=负数）
+//   bit6   — 固定为 1（用于同步校验）
+//   bit7   — 溢出标志（0=正常）
+//
 // 参数：
-//   mdec — 鼠标解码结构体，包含状态 phase 和缓冲区 buf
-//   dat  — 鼠标 FIFO 读取到的一个字节
+//   mdec — 鼠标解码结构体，保存组装状态和解析结果
+//   dat  — 从鼠标 FIFO 读取的一个字节
+//
 // 返回：
-//   0 — 数据包尚未收齐（还在等第 1/2/3 字节）
-//   1 — 3 字节收齐，数据包可用了
+//   0 — 数据包尚未收齐（继续等待下一字节）
+//   1 — 3 字节收齐且解析完成，可通过 mdec->btn/x/y 读取数据
+// ============================================================
+int mouse_decode(struct MOUSE_DEC *mdec, unsigned char dat)
 {
 	if (mdec->phase == 0)
 	{
-		// 等待鼠标 ACK（0xfa），enable_mouse 发送 0xf4 后鼠标回复确认
+		// phase 0: 等待鼠标 ACK（0xfa）
+		// enable_mouse 发送 0xf4 后，鼠标回复 0xfa 表示"已就绪"
 		if (dat == 0xfa)
 		{
-			mdec->phase = 1;
+			mdec->phase = 1; // ACK 确认，开始接收数据包
 		}
 		return 0;
 	}
 	if (mdec->phase == 1)
 	{
-		// 接收字节 0（按键状态 + 符号位）
-		mdec->buf[0] = dat;
-		mdec->phase = 2;
+		// phase 1: 接收字节 0（按键状态 + 符号位）
+		// 0xc8 = 1100 1000，作为掩码只检查 bit3（同步标志，必须为 1）
+		// 用 == 0x08 要求：bit3=1 且 bit6/bit7=0（无溢出）
+		// 若不符合则丢弃，防止数据不同步导致显示错乱
+		if ((dat & 0xc8) == 0x08)
+		{
+			mdec->buf[0] = dat; // buf[0] 低 3 位 = 按键状态，bit4/5 = 位移符号
+			mdec->phase = 2;
+		}
 		return 0;
 	}
 	if (mdec->phase == 2)
 	{
-		// 接收字节 1（X 轴位移量，带符号）
+		// phase 2: 接收字节 1（X 轴位移量，带符号，1 字节范围）
 		mdec->buf[1] = dat;
 		mdec->phase = 3;
 		return 0;
 	}
 	if (mdec->phase == 3)
 	{
-		// 接收字节 2（Y 轴位移量，带符号），3 字节收齐
+		// phase 3: 接收字节 2（Y 轴位移量，带符号，1 字节范围）
+		// 3 字节收齐 → 解析 → 回到 phase 1 等待下一数据包
 		mdec->buf[2] = dat;
-		mdec->phase = 1; // 回到 phase 1 等待下一个数据包（不回 0，因为 ACK 只出现一次）
-		return 1;		 // 返回 1 通知调用方数据包已就绪
+		mdec->phase = 1; // 回到 phase 1（不回 0，ACK 只出现一次）
+
+		// --- 解析数据包 ---
+		mdec->btn = mdec->buf[0] & 0x07; // 取 buf[0] 低 3 位：左中右键状态
+		mdec->x = mdec->buf[1];			 // X 位移量（需要符号扩展）
+		mdec->y = mdec->buf[2];			 // Y 位移量（需要符号扩展）
+
+		// 符号扩展：若 buf[0] 的 bit4=1，X 为负数 → 将高 24 位置 1
+		if ((mdec->buf[0] & 0x10) != 0)
+		{
+			mdec->x |= 0xffffff00;
+		}
+		// 符号扩展：若 buf[0] 的 bit5=1，Y 为负数 → 将高 24 位置 1
+		if ((mdec->buf[0] & 0x20) != 0)
+		{
+			mdec->y |= 0xffffff00;
+		}
+
+		mdec->y = -mdec->y; // Y 轴取反：鼠标数据包中 Y 向下为正，
+							// 若要匹配屏幕坐标（Y 向下为正），此处不应取反；
+							// 暂时保留取反以维持当前显示行为
+		return 1;			// 返回 1 通知调用方数据包已就绪
 	}
-	return -1; // 不应该到达的分支（容错）
+	return -1; // 不应到达的分支（容错）
 }
 
 // ============================================================
@@ -335,8 +386,20 @@ void HariMain(void)
 				if (mouse_decode(&mdec, i) != 0)
 				{
 					// 3 字节收齐，在屏幕左上角第二行右侧显示完整数据包
-					sprintf(s, "%02X %02X %02X", mdec.buf[0], mdec.buf[1], mdec.buf[2]);
-					boxfill8(binfo->vram, binfo->scrnx, COL8_008484, 32, 16, 95, 31);
+					sprintf(s, "[lcr %4d %4d]", mdec.x, mdec.y); // 格式化显示字符串，包含按键状态和位移量
+					if ((mdec.btn & 0x01) != 0)
+					{
+						s[1] = 'L'; // 左键按下
+					}
+					if ((mdec.btn & 0x02) != 0)
+					{
+						s[3] = 'R'; // 中键按下
+					}
+					if ((mdec.btn & 0x04) != 0)
+					{
+						s[2] = 'C'; // 右键按下
+					}
+					boxfill8(binfo->vram, binfo->scrnx, COL8_008484, 32, 16, 32 + 15 * 8 - 1, 31);
 					putfonts8_asc(binfo->vram, binfo->scrnx, 32, 16, COL8_FFFFFF, s);
 				}
 			}

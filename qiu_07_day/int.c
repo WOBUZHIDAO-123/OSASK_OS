@@ -59,35 +59,63 @@ void inthandler21(int *esp)
 }
 
 // ============================================================
-// inthandler27 — PIC1（从片）伪中断处理（IRQ7 → IDT 0x27）
+// inthandler27 — PIC0 伪中断处理（IRQ7 → IDT 0x27）
+//
 // 当 PIC1 上有中断发生时，如果 PIC0 还没有从 IRQ2 接收完中断信号，
-// PIC0 会自己产生一个 IRQ7 来补偿。这个中断可以忽略。
+// PIC0 会自己产生一个 IRQ7 来补偿（伪中断 / spurious interrupt）。
+// 此中断在 PIC 初始化时几乎必定发生一次（芯片组电气噪声），
+// 只需发送 EOI 告知 PIC 处理完毕即可，不做任何实质性操作。
+// 为什么不需要处理？因为这个中断是 PIC 初始化时的电气噪声产生的，
+// 并非真正的外设中断请求，无需响应任何设备。
+//
 // 参数: esp = 中断发生时的栈指针
 // ============================================================
 void inthandler27(int *esp)
 {
-    // 在屏幕左上角显示提示信息，表示伪中断已收到
-    struct BOOTINFO *binfo = (struct BOOTINFO *)ADR_BOOTINFO;
-    boxfill8(binfo->vram, binfo->scrnx, COL8_FF0000, 0, 0, 32 * 8 - 1, 15);
-    putfonts8_asc(binfo->vram, binfo->scrnx, 0, 0, COL8_FFFFFF, "INT 27 (IRQ-7) : PIC1 spurious");
-    for (;;)
-    {
-        io_hlt();
-    }
+    // 发送 EOI 到主 PIC（0x67 = 0x60 + IRQ7），通知 IRQ7 处理完毕
+    io_out8(PIC0_OCW2, 0x67);
+    return;
 }
+
+// 鼠标数据 FIFO 环形缓冲区全局变量
+//   中断处理函数 inthandler2c 将鼠标数据包写入此缓冲区，
+//   主循环 (HariMain) 轮询读取，用于更新鼠标指针位置。
+struct FIFO8 mousefifo;
 
 // ============================================================
 // inthandler2c — 鼠标中断（IRQ12 → IDT 0x2C）处理函数
 // 由 _asm_inthandler2c（naskfunc.nas）在保存现场后调用
-// 参数: esp = 中断发生时的栈指针
+//
+// 职责：
+//   ① 通知从 PIC（PIC1）IRQ12 处理完毕（EOI）
+//   ② 通知主 PIC（PIC0）IRQ2 处理完毕（PIC1 通过 IRQ2 级联）
+//   (因为控制鼠标的 PIC1 连接在主 PIC 的 IRQ2 上，信号传导 cpu 需经过两片 PIC，所以需要同时通知两个 PIC 中断处理完毕)
+//   ③ 从键盘控制器数据端口（0x0060）读取鼠标发来的数据包
+//   ④ 将数据存入 mousefifo 环形缓冲区，供主循环轮询处理
+//
+// 鼠标数据格式（3 字节数据包，每次鼠标移动/按键触发）：
+//   字节 0: bit0~2=按键状态, bit4~7=位移方向
+//   字节 1: X 轴位移量（带符号）
+//   字节 2: Y 轴位移量（带符号）
+//
+// 参数: esp = 中断发生时的栈指针（指向被中断程序的 EFLAGS/CS/EIP）
 // ============================================================
 void inthandler2c(int *esp)
 {
-    struct BOOTINFO *binfo = (struct BOOTINFO *)ADR_BOOTINFO;
-    boxfill8(binfo->vram, binfo->scrnx, COL8_FF0000, 0, 0, 32 * 8 - 1, 15);
-    putfonts8_asc(binfo->vram, binfo->scrnx, 0, 0, COL8_FFFFFF, "INT 2C (IRQ-12) : PS/2 mouse");
-    for (;;)
-    {
-        io_hlt();
-    }
+    unsigned char data;
+
+    // 发送 EOI（End Of Interrupt）到从片 PIC1
+    // OCW2 = 0x00A0, 写入 0x64 = 0x60 + IRQ12，通知 PIC1 IRQ12 处理完毕
+    io_out8(PIC1_OCW2, 0x64);
+
+    // 发送 EOI 到主片 PIC0（因为 PIC1 通过 IRQ2 级联到 PIC0）
+    // OCW2 = 0x0020, 写入 0x62 = 0x60 + IRQ2，通知 PIC0 IRQ2 处理完毕
+    io_out8(PIC0_OCW2, 0x62);
+
+    // 鼠标启用后，每次移动/按键都会向此端口发送一个数据字节
+    data = io_in8(PORT_KEYDAT);
+
+    fifo8_put(&mousefifo, data);
+
+    return;
 }

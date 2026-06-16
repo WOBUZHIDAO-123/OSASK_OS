@@ -270,7 +270,6 @@ void init_pic(void);
 void inthandler21(int *esp);
 void inthandler27(int *esp);
 void inthandler2c(int *esp);
-void show_keybuf(void);
 #define PIC0_ICW1 0x0020 // 主 PIC ICW1（边沿触发、级联、需要 ICW4）
 #define PIC0_OCW2 0x0020 // 主 PIC OCW2（发送 EOI 通知中断结束）
 #define PIC0_IMR 0x0021	 // 主 PIC IMR（屏蔽/启用中断）
@@ -284,14 +283,6 @@ void show_keybuf(void);
 #define PIC1_ICW3 0x00a1 // 从 PIC ICW3（级联标识，接主 PIC 的 IRQ2）
 #define PIC1_ICW4 0x00a1 // 从 PIC ICW4
 
-/* ============================================================
- * 键盘缓冲区结构体 — 在 int.c 中定义全局变量
- * ============================================================ */
-struct KEYBUF
-{
-	unsigned char data[32]; // data 存储键盘扫描码，flag 标志位表示缓冲区状态（0=空，1=有数据）
-	int read, next;			// read 指向下一个可读取数据的位置，next 指向下一个可写入数据的位置（循环缓冲区）
-};
 
 /* ============================================================
  * FIF08 — 通用环形缓冲区结构体

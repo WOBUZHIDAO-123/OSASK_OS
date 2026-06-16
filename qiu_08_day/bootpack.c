@@ -68,7 +68,9 @@
 //   在此之前鼠标处于静默状态，不会产生任何中断
 #define MOUSECMD_ENABLE 0xf4
 
-// 导入键盘 FIFO 缓冲区全局变量（由 int.c 定义，中断处理函数填充数据）
+// 键盘和鼠标 FIFO 缓冲区全局变量
+//   中断处理函数 (inthandler21, inthandler2c) 在中断发生时将数据写入这些缓冲区，
+//   主循环 (HariMain) 轮询读取，用于更新显示。
 extern struct FIFO8 keyfifo;
 extern struct FIFO8 mousefifo;
 
@@ -141,13 +143,56 @@ void init_keyboard(void)
 //   鼠标启用后，每次移动或按键都会触发 IRQ12 中断，
 //   中断处理函数 inthandler2c 从 PORT_KEYDAT 读取鼠标数据。
 // ============================================================
-void enable_mouse(void)
+void enable_mouse(struct MOUSE_DEC *mdec)
 {
 	wait_KBC_sendready();
 	io_out8(PORT_KEYCMD, KEYCMD_SENDTO_MOUSE);
 	wait_KBC_sendready();
 	io_out8(PORT_KEYDAT, MOUSECMD_ENABLE);
+	mdec->phase = 0; // 初始化鼠标解码状态：phase=0 表示等待鼠标 ACK (0xfa) 确认
 	return;
+}
+
+int mouse_decode(struct MOUSE_DEC *mdec, unsigned char dat)
+// 功能：鼠标数据解码函数，逐步接收 3 字节数据包
+// 参数：
+//   mdec — 鼠标解码结构体，包含状态 phase 和缓冲区 buf
+//   dat  — 鼠标 FIFO 读取到的一个字节
+// 返回：
+//   0 — 数据包尚未收齐（还在等第 1/2/3 字节）
+//   1 — 3 字节收齐，数据包可用了
+{
+	if (mdec->phase == 0)
+	{
+		// 等待鼠标 ACK（0xfa），enable_mouse 发送 0xf4 后鼠标回复确认
+		if (dat == 0xfa)
+		{
+			mdec->phase = 1;
+		}
+		return 0;
+	}
+	if (mdec->phase == 1)
+	{
+		// 接收字节 0（按键状态 + 符号位）
+		mdec->buf[0] = dat;
+		mdec->phase = 2;
+		return 0;
+	}
+	if (mdec->phase == 2)
+	{
+		// 接收字节 1（X 轴位移量，带符号）
+		mdec->buf[1] = dat;
+		mdec->phase = 3;
+		return 0;
+	}
+	if (mdec->phase == 3)
+	{
+		// 接收字节 2（Y 轴位移量，带符号），3 字节收齐
+		mdec->buf[2] = dat;
+		mdec->phase = 1; // 回到 phase 1 等待下一个数据包（不回 0，因为 ACK 只出现一次）
+		return 1;		 // 返回 1 通知调用方数据包已就绪
+	}
+	return -1; // 不应该到达的分支（容错）
 }
 
 // ============================================================
@@ -157,6 +202,7 @@ void enable_mouse(void)
 void HariMain(void)
 {
 	struct BOOTINFO *binfo = (struct BOOTINFO *)ADR_BOOTINFO;
+	struct MOUSE_DEC mdec; // 鼠标数据解码用结构体，保存鼠标数据包和接收状态
 
 	// ============================================================
 	// 第一步：硬件初始化
@@ -234,7 +280,7 @@ void HariMain(void)
 	init_keyboard();
 
 	// --- 启用鼠标设备（向鼠标发送 0xf4，鼠标开始上报数据，触发 IRQ12） ---
-	enable_mouse();
+	enable_mouse(&mdec); // 启用鼠标，并传入鼠标数据解码结构体指针，供中断处理函数使用
 
 	// ============================================================
 	// 第四步：主循环 — 轮询键盘和鼠标缓冲区
@@ -261,8 +307,6 @@ void HariMain(void)
 	//   防止在检查/读取缓冲区的瞬间 PIC 发来中断，导致状态不一致。
 	//   CLI → 检查/读取 → STI，保证原子操作。
 	// ============================================================
-	unsigned char mouse_dbuf[3];   // 鼠标 3 字节数据包缓冲区
-	unsigned char mouse_phase = 0; // 鼠标数据包接收状态机状态：0=等待 ACK（确认应答信号），1=接收字节0，2=接收字节1，3=接收字节2
 	for (;;)
 	{
 		io_cli();													// 屏蔽 PIC 中断信号：保证后续检查和读取不会被中断干扰
@@ -286,38 +330,12 @@ void HariMain(void)
 				int i = fifo8_get(&mousefifo); // 从鼠标 FIFO 取出一个字节
 				io_sti();					   // 恢复 PIC 信号响应（显示操作允许被打断）
 
-				// --- 鼠标 3 字节数据包状态机 ---
-				if (mouse_phase == 0)
+				// 将字节送入解码函数，mouse_decode 根据 phase 自动拼装
+				// 返回 0 = 还没收完, 返回 1 = 3 字节收齐
+				if (mouse_decode(&mdec, i) != 0)
 				{
-					// phase 0: 等待鼠标 ACK（0xfa）
-					// enable_mouse 发送 0xf4 后，鼠标回复 0xfa 表示"收到，已就绪"
-					// 0xfa 是 PS/2 协议统一的应答字节，任何命令正常处理后都回复此值
-					if (i == 0xfa)
-					{
-						mouse_phase = 1; // ACK 收到，开始拼装数据包
-					}
-				}
-				else if (mouse_phase == 1)
-				{
-					// phase 1: 接收数据包字节 0（按键状态 + 符号位）
-					mouse_dbuf[0] = i;
-					mouse_phase = 2;
-				}
-				else if (mouse_phase == 2)
-				{
-					// phase 2: 接收数据包字节 1（X 轴位移量，带符号）
-					mouse_dbuf[1] = i;
-					mouse_phase = 3;
-				}
-				else if (mouse_phase == 3)
-				{
-					// phase 3: 接收数据包字节 2（Y 轴位移量，带符号）
-					// 3 字节收齐 → 拼包完成 → 显示 → 回到 phase 1 等待下一包
-					mouse_dbuf[2] = i;
-					mouse_phase = 1;
-
-					// 在屏幕左上角第二行右侧显示完整的 3 字节鼠标数据包
-					sprintf(s, "%02X %02X %02X", mouse_dbuf[0], mouse_dbuf[1], mouse_dbuf[2]);
+					// 3 字节收齐，在屏幕左上角第二行右侧显示完整数据包
+					sprintf(s, "%02X %02X %02X", mdec.buf[0], mdec.buf[1], mdec.buf[2]);
 					boxfill8(binfo->vram, binfo->scrnx, COL8_008484, 32, 16, 95, 31);
 					putfonts8_asc(binfo->vram, binfo->scrnx, 32, 16, COL8_FFFFFF, s);
 				}

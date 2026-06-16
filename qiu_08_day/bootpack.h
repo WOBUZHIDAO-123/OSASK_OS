@@ -319,3 +319,20 @@ void fifo8_init(struct FIFO8 *fifo, int size, unsigned char *buf);
 int  fifo8_put(struct FIFO8 *fifo, unsigned char data);
 int  fifo8_get(struct FIFO8 *fifo);
 int  fifo8_status(struct FIFO8 *fifo);
+
+
+/* ============================================================
+ * MOUSE_DEC — 鼠标数据解码结构体
+ *
+ * 用于在 3 次中断中逐步拼装鼠标数据包，
+ * 由 enable_mouse 初始化 phase=0，
+ * 由 mouse_decode 逐字节解码。
+ *
+ * 成员说明：
+ *   buf[3] — 3 字节鼠标数据包
+ *   phase  — 拼包状态：0=等 ACK, 1~3=收字节 0~2
+ * ============================================================ */
+struct MOUSE_DEC
+{
+	unsigned char buf[3], phase;
+};

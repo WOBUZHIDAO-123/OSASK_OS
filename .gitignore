@@ -1,0 +1,18 @@
+# 编译中间产物（各天目录下的 .lst .obj .bin 等）
+*.lst
+*.obj
+*.bin
+*.hrb
+*.bim
+*.map
+*.sys
+
+# 工具链二进制文件（已有源码，无需跟踪二进制）
+z_tools/aska.exe
+z_tools/bim2hrb.exe
+z_tools/bin2obj.exe
+z_tools/doscmd.exe
+z_tools/make.exe
+z_tools/makefont.exe
+z_tools/t5lzma.exe
+z_tools/upx.exe

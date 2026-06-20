@@ -278,11 +278,11 @@ void HariMain(void)
 	init_screen8(binfo->vram, binfo->scrnx, binfo->scrny);
 
 	// --- 鼠标指针 ---
-	char mcursor[256];
+	char mcursor[256];													 // 鼠标图案缓冲区，256 字节（16x16 位图）
 	int mx = (binfo->scrnx - 16) / 2;									 // 水平居中
 	int my = (binfo->scrny - 28 - 16) / 2;								 // 垂直居中（避开任务栏）
-	init_mouse_cursor8(mcursor, COL8_008484);							 // 生成鼠标图案
-	putblock8_8(binfo->vram, binfo->scrnx, 16, 16, mx, my, mcursor, 16); // 画到屏幕上
+	init_mouse_cursor8(mcursor, COL8_008484);							 // 生成鼠标图案到 mcursor，背景色为 COL8_008484
+	putblock8_8(binfo->vram, binfo->scrnx, 16, 16, mx, my, mcursor, 16); // 将鼠标显示到屏幕上
 
 	// --- 左上角信息显示 ---
 	char s[40];
@@ -388,22 +388,24 @@ void HariMain(void)
 				{
 					/* ---- 显示鼠标信息（左上角第二行右侧） ---- */
 
-					// 格式化显示字符串，模板 "[lcr %4d %4d]"
-					// lcr 分别代表左/中/右键状态，由后续判断替换字母
+					// 模板 "[lcr %4d %4d]"，l/c/r 分别标记左/中/右键
+					// 若按键按下，对应小写字母替换为大写
 					sprintf(s, "[lcr %4d %4d]", mdec.x, mdec.y);
-
-					// 根据 btn 低 3 位替换模板中的字母
+					// btn 是 buf[0] 的低 3 位（bit0~bit2），每一位代表一个按键
+					// & 0x01 提取 bit0 → 1=左键按下
+					// & 0x02 提取 bit1 → 1=右键按下
+					// & 0x04 提取 bit2 → 1=中键按下
 					if ((mdec.btn & 0x01) != 0)
 					{
-						s[1] = 'L'; // bit0=1 → 左键按下，替换 'l' → 'L'
+						s[1] = 'L'; // bit0 → 左键
 					}
 					if ((mdec.btn & 0x02) != 0)
 					{
-						s[3] = 'R'; // bit1=1 → 中键按下，替换 'r' → 'R'
+						s[3] = 'R'; // bit1 → 右键
 					}
 					if ((mdec.btn & 0x04) != 0)
 					{
-						s[2] = 'C'; // bit2=1 → 右键按下，替换 'c' → 'C'
+						s[2] = 'C'; // bit2 → 中键
 					}
 
 					boxfill8(binfo->vram, binfo->scrnx, COL8_008484, 32, 16, 32 + 15 * 8 - 1, 31);
@@ -411,38 +413,30 @@ void HariMain(void)
 
 					/* ---- 更新鼠标屏幕位置 ---- */
 
-					// ① 擦除旧位置的鼠标指针（用桌面背景色覆盖 16×16 区域）
-					boxfill8(binfo->vram, binfo->scrnx, COL8_008484, mx, my, mx + 15, my + 15);
-
-					// ② 根据鼠标位移累加坐标
-					mx += mdec.x;
-					my += mdec.y;
-
-					// ③ 边界裁剪：防止鼠标指针超出屏幕范围
+					boxfill8(binfo->vram, binfo->scrnx, COL8_008484, mx, my, mx + 15, my + 15); // 擦除旧指针
+					mx += mdec.x;																// 累加 X 位移
+					my += mdec.y;																// 累加 Y 位移
 					if (mx < 0)
 					{
 						mx = 0;
-					}
+					} // 左边界
 					if (my < 0)
 					{
 						my = 0;
-					}
+					} // 上边界
 					if (mx > binfo->scrnx - 16)
 					{
 						mx = binfo->scrnx - 16;
-					}
+					} // 右边界
 					if (my > binfo->scrny - 16)
 					{
 						my = binfo->scrny - 16;
-					}
+					} // 下边界
 
-					// ④ 更新左上角坐标显示
-					sprintf(s, "(%3d,%3d)", mx, my);
-					boxfill8(binfo->vram, binfo->scrnx, COL8_008484, 0, 0, 79, 15);	 // 清除旧坐标
-					putfonts8_asc(binfo->vram, binfo->scrnx, 0, 0, COL8_FFFFFF, s); // 显示新坐标
-
-					// ⑤ 在新位置绘制鼠标指针
-					putblock8_8(binfo->vram, binfo->scrnx, 16, 16, mx, my, mcursor, 16);
+					sprintf(s, "(%3d,%3d)", mx, my); // 显示新坐标
+					boxfill8(binfo->vram, binfo->scrnx, COL8_008484, 0, 0, 79, 15);
+					putfonts8_asc(binfo->vram, binfo->scrnx, 0, 0, COL8_FFFFFF, s);
+					putblock8_8(binfo->vram, binfo->scrnx, 16, 16, mx, my, mcursor, 16); // 绘制新指针
 				}
 			}
 		}
